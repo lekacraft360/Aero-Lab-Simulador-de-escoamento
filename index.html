@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Aero Lab – Simulador de escoamento</title>
+<style>
+:root{--bg:#f6f8fb;--fg:#1b2635;--mut:#5b6777;--card:#fff;--card2:#eaf0f7;--acc:#e8743b;--nav:#1f3a5f;--bd:#d3dce8;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e131a;--fg:#e6ebf2;--mut:#9aa6b6;--card:#171f2b;--card2:#1f2a39;--nav:#8fb4e8;--bd:#2c3a4d;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e131a;--fg:#e6ebf2;--mut:#9aa6b6;--card:#171f2b;--card2:#1f2a39;--nav:#8fb4e8;--bd:#2c3a4d;color-scheme:dark}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+main{max-width:1020px;margin:0 auto;padding:14px}
+h1{font-size:22px;margin:4px 0 2px;color:var(--nav)}h2{font-size:16px;margin:0 0 8px;color:var(--nav)}
+p.s{margin:0 0 10px;color:var(--mut);font-size:13px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
+button{font:inherit;font-size:14px;border:1px solid var(--bd);background:var(--card2);color:var(--fg);padding:7px 12px;border-radius:8px;cursor:pointer}
+button.on{background:var(--nav);color:var(--bg);border-color:var(--nav)}
+.wrap{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--bd);background:#0b0f14;touch-action:pan-y}
+.wrap canvas{width:100%;display:block}#ov{position:absolute;left:0;top:0;pointer-events:none}
+.tag{position:absolute;font-size:11px;line-height:1.2;color:#fff;background:rgba(10,14,20,.72);padding:2px 6px;border-left:3px solid var(--acc);border-radius:3px;pointer-events:none;white-space:nowrap}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.k{background:var(--card2);border-radius:8px;padding:8px 10px}.k b{display:block;font-size:19px;color:var(--nav)}.k span{font-size:12px;color:var(--mut)}
+.sl{display:flex;flex-direction:column;gap:2px;flex:1;min-width:200px;font-size:13px}.sl input{width:100%}
+.bar{height:10px;border-radius:5px;width:200px}
+small,.mut{color:var(--mut);font-size:12px}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--bd);white-space:nowrap}th:first-child,td:first-child{text-align:left}tr.cur td{background:var(--card2);font-weight:600}
+.sc{overflow-x:auto}ul{margin:4px 0 0;padding-left:18px}li{margin:2px 0}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+#probe{font-variant-numeric:tabular-nums}
+</style></head><body><main>
+<h1>Aero Lab – simulador de escoamento ao redor do carro</h1>
+<p class="s">Simulação 2D feita do zero no navegador (Boltzmann em rede, corte no plano de simetria). Didática: mostra pressão, descolamento e esteira; não substitui CFD 3D.</p>
+<div class="row" id="cfgs"></div>
+
+<div class="card">
+<div class="wrap" id="wrap"><canvas id="c" width="900" height="321"></canvas><canvas id="ov" width="900" height="321" style="width:100%;height:100%"></canvas><div id="tags"></div></div>
+<div class="row"><div class="bar" id="bar"></div><small id="leg"></small>
+<button id="play" class="on">Pausar</button><button id="rst">Reiniciar</button><button id="mode"></button><button id="part" class="on">Partículas</button><button id="ann" class="on">Anotações</button><button id="spd">Sim: 8×</button><small id="st"></small></div>
+<p class="mut" id="probe" style="margin:0">Passe o mouse (ou toque) sobre o escoamento para ler velocidade, pressão e vorticidade locais.</p>
+</div>
+
+<div class="card"><h2>Condições de operação</h2>
+<div class="row"><label class="sl">Velocidade do carro: <b><span id="vv">100</span> km/h</b><input id="v" type="range" min="40" max="160" step="10" value="100"></label>
+<label class="sl">Vento: <b id="hw">0 km/h</b> <small>(+ contra / − a favor)</small><input id="h" type="range" min="-40" max="40" step="5" value="0"></label><label class="sl">Altitude: <b id="alv">0 m</b> <small>(densidade do ar, Seção 3.5)</small><input id="al" type="range" min="0" max="3000" step="100" value="0"></label><label class="sl">Temperatura: <b id="tpv">15 °C</b> <small>(afeta ρ, μ e a)</small><input id="tp" type="range" min="-10" max="45" step="5" value="15"></label></div>
+<div class="row" id="vp"><small>Velocidades do documento:</small></div><div class="grid" id="k"></div></div>
+
+<div class="card"><h2>O que a simulação mede no vento (esteira e pressão)</h2>
+<div class="grid" id="m"></div>
+<p class="s" style="margin:8px 0 0">Arrasto de pressão: o ar fica com pressão alta no nariz (ponto de estagnação) e baixa atrás, onde o fluxo descola. Quanto maior a diferença ΔCp e mais larga a esteira, maior o arrasto. Valores medidos no corte 2D, em tempo real.</p></div>
+
+<div class="card"><h2 id="dn"></h2><div class="two"><div><p id="dd" style="margin:0 0 6px"></p><b>Componentes</b><ul id="dp"></ul></div><div><b>Efeito no escoamento</b><ul id="de"></ul></div></div><p id="du" class="s" style="margin:8px 0 0"></p></div>
+<div class="card"><h2>Cálculo passo a passo (Seção 3.3 do documento)</h2><ol id="sp" style="margin:0;padding-left:20px"></ol></div>
+<div class="card"><h2>Tabela por velocidade – configuração atual (Tabelas 5 a 7)</h2><div class="sc"><table id="tv"></table></div></div>
+<div class="card"><h2>Maquete 1:20 (Seção 3.7)</h2><label class="sl">Velocidade do ar no túnel: <b id="mvl">5,0 m/s</b><input id="mv" type="range" min="3" max="6" step="0.5" value="5"></label><div class="grid" id="mq" style="margin-top:8px"></div><p class="s" style="margin:8px 0 0">Maquete de 22,5 cm: o Reynolds é muito menor que o do carro real, então ela mostra o comportamento qualitativo (descolamento e esteira, com fios de lã e fumaça), não valores reais de C_D.</p></div>
+
+<div class="card"><h2>Comparação entre configurações</h2><div class="sc"><table id="tb"></table></div>
+<canvas id="ch" width="900" height="280" style="width:100%;margin-top:10px"></canvas>
+<p class="s" style="margin:4px 0 0">Potência gasta só contra o arrasto em função da velocidade (cresce com o cubo de V).</p></div>
+
+<p class="s">Parâmetros do documento: carro 4,50 × 1,90 × 1,25 m; A = 0,80·W·H = 1,90 m²; ρ = 1,225 kg/m³ (nível do mar, 15 °C; muda com a altitude); μ = 1,81 × 10⁻⁵ Pa·s; a = 340,3 m/s. Equações: q = ½ρV², F = q·C·A, P = F·V. Na simulação o chão se move junto com o ar, como no SimScale. Os coeficientes C_D e C_L são estimativas de partida. Na animação o Reynolds é fixo; velocidade e vento alteram só os números teóricos.</p>
+</main>
+<script>
+(function(){
+var NX=480,NZ=107,N=NX*NZ,U=0.1,TAU0=0.506,CS2=0.16*0.16,VX0=60,VW=300;
+var CX=[0,1,0,-1,0,1,-1,-1,1],CZ=[0,0,1,0,-1,1,1,-1,-1],W=[4/9,1/9,1/9,1/9,1/9,1/36,1/36,1/36,1/36],OP=[0,3,4,1,2,7,8,5,6];
+var M64={original:"AAAAA8AAAAAAAAAAAAAA8AAAAAAAAB/4AAAAAAAAAAAAB/4AAAAAAAB//AAAAAAAAAAAAB//AAAAAAAA//4AAAAAAAAAAAA//4AAAAAAAf//AAAAAAAAAAAAf//AAAAAP///////////////////+AAAH///////////////////////gP////////////////////////z////////////////////////8/////////////////////////P////////////////////////z////////////////////////8/////////////////////////P////////////////////////x////////////////////////8f////////////////////////H////////////////////////w////////////////////////8H////////////////////////A////////////////////////wD///////////////////////8AP///////////////////////AAP//////////////////////wAAP/////////////////////8AAAD/////////////////////AAAAAP///////////////////wAAAAAB//////////////////8AAAAAAAD/////////////////AAAAAAAAD////////////////wAAAAAAAAP///////////////4AAAAAAAAA///////////////AAAAAAAAAAH/////////////wAAAAAAAAAAA////////////8AAAAAAAAAAAAD///////////4AAAAAAAAAAAAAf//////////wAAAAAAAAAAAAAD//////////wAAAAAAAAAAAAAAf/////////wAAAAAAAAAAAAAAB/////////gAAAAAAAAAAAAAAAP////////gAAAAAAAAAAAAAAAA////////AAAAAAAAAAAAAAAAAAP/////wAAAAAAAAAAAAAAAAAAAAf/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",spoiler:"AAAAA8AAAAAAAAAAAAAA8AAAAAAAAB/4AAAAAAAAAAAAB/4AAAAAAAB//AAAAAAAAAAAAB//AAAAAAAA//4AAAAAAAAAAAA//4AAAAAAAf//AAAAAAAAAAAAf//AAAAAP///////////////////+AAAH///////////////////////gP////////////////////////z////////////////////////8/////////////////////////P////////////////////////z////////////////////////8/////////////////////////P////////////////////////x////////////////////////8f////////////////////////H////////////////////////w////////////////////////8H////////////////////////A////////////////////////wD///////////////////////8AP///////////////////////AAP//////////////////////wAAP/////////////////////8AAAD/////////////////////AAAAAP///////////////////wAAAAAB//////////////////8AAAAAAAD/////////////////AAAAAAAAD////////////////wAAAAAAAAP///////////////8AAAAAAAAA////////////////AAAAAAAAAH///////////////wAAAAAAAAA////////////8AA8AAAAAAAAAD///////////4AAAAAAAAAAAAAf//////////wAAAAAAAAAAAAAD//////////wAAAAAAAAAAAAAAf/////////wAAAAAAAAAAAAAAB/////////gAAAAAAAAAAAAAAAP////////gAAAAAAAAAAAAAAAA////////AAAAAAAAAAAAAAAAAAP/////wAAAAAAAAAAAAAAAAAAAAf/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",wing:"AAAAA8AAAAAAAAAAAAAA8AAAAAAAAB/4AAAAAAAAAAAAB/4AAAAAAAB//AAAAAAAAAAAAB//AAAAAAAA//4AAAAAAAAAAAA//4AAAAAAAf//AAAAAAAAAAAAf//AAAAAP///////////////////+AAAH///////////////////////gP////////////////////////z////////////////////////8/////////////////////////P////////////////////////z////////////////////////8/////////////////////////P////////////////////////x////////////////////////8f////////////////////////H////////////////////////w////////////////////////8H////////////////////////A////////////////////////wD///////////////////////8AP///////////////////////AAP//////////////////////wAAP/////////////////////8AAAD/////////////////////AAAAAP///////////////////wAAAAAB//////////////////8AAAAAAAD/////////////////AAAAAAAAD////////////////wAAAAAAAAP///////////////4AAAAAAAAA///////////////AAAAAAAAAAH/////////////wAAAAAAAAAAA////////////8AAAAAAAAAAAAD///////////4AAAAAAAAAAAAAf//////////wAAAAAAAAAAAAAD//////////wAAAAAAAAAAAAAAf/////////wAAAAAAAAAAAAAAB/////////gAAAAAAAAAAAAAAAP////////gAD+AAAAAAAAAAAAA////////AAA/+AAAAAAAAAAAAAP/////wAAAAB8AAAAAAAAAAAAAAf/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",wing_diffuser:"AAAAA8AAAAAAAAAAAAAA8AAAAAAAAB/4AAAAAAAAAAAAB/4AAAAAAAB//AAAAAAAAAAAAB//AAAAAAAA//4AAAAAAAAAAAA//4AAAAAAAf//AAAAAAAAAAAAf//AAAAAP///////////////////4AAAH/////////////////////AAAP/////////////////////wAAD//////////////////////wAA///////////////////////4AP///////////////////////8D////////////////////////8/////////////////////////P////////////////////////x////////////////////////8f////////////////////////H////////////////////////w////////////////////////8H////////////////////////A////////////////////////wD///////////////////////8AP///////////////////////AAP//////////////////////wAAP/////////////////////8AAAD/////////////////////AAAAAP///////////////////wAAAAAB//////////////////8AAAAAAAD/////////////////AAAAAAAAD////////////////wAAAAAAAAP///////////////4AAAAAAAAA///////////////AAAAAAAAAAH/////////////wAAAAAAAAAAA////////////8AAAAAAAAAAAAD///////////4AAAAAAAAAAAAAf//////////wAAAAAAAAAAAAAD//////////wAAAAAAAAAAAAAAf/////////wAAAAAAAAAAAAAAB/////////gAAAAAAAAAAAAAAAP////////gAD+AAAAAAAAAAAAA////////AAA/+AAAAAAAAAAAAAP/////wAAAAB8AAAAAAAAAAAAAAf/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="};
+var CFG=[
+{k:"original",u:"é a referência; o assoalho plano é a otimização mais eficiente em qualquer carro.",n:"Original",cd:.32,cl:.05,d:"Carroceria de série: o ar acelera sobre o teto e descola na traseira, formando uma esteira larga de baixa pressão.",p:["Perfil de teto contínuo","Fundo liso","Traseira vertical"],e:["Maior esteira e maior arrasto de pressão","Leve sustentação positiva em alta velocidade","Referência para as demais versões"]},
+{k:"spoiler",u:"carros de rua em alta velocidade, buscando estabilidade com pouco arrasto.",n:"Spoiler",cd:.33,cl:-.05,d:"Aba na borda da tampa traseira: força o descolamento a ocorrer de forma controlada e reduz a sustentação.",p:["Aba curta no bordo traseiro"],e:["Anula a sustentação traseira (C_L ≈ 0)","Pequeno acréscimo de arrasto","Melhora a estabilidade em alta velocidade"]},
+{k:"wing",u:"pista e curvas rápidas, quando a aderência é o foco.",n:"Aerofólio",cd:.35,cl:-.30,d:"Asa invertida elevada, no ar limpo acima da traseira: gera força para baixo (downforce) à custa de arrasto induzido.",p:["Asa em perfil invertido","Montantes de fixação"],e:["Downforce significativa no eixo traseiro","Arrasto sobe cerca de 9% vs. original","Esteira mais alta e turbulenta atrás da asa"]},
+{k:"wing_diffuser",u:"esportivos e carros de competição, combinado com assoalho plano (adiciona cerca de 13% de arrasto).",n:"Aerofólio + difusor",cd:.36,cl:-.45,d:"Soma asa e difusor sob o fundo: o fundo expande o ar, reduz a pressão sob o carro (efeito solo) e enche a esteira.",p:["Asa em perfil invertido","Difusor traseiro no fundo","Fundo liso"],e:["Maior downforce total (C_L −0,45)","Difusor reduz a esteira e recupera pressão atrás","Melhor relação downforce/arrasto das versões"]}];
+var COL=["#8a97a8","#4a90d9","#e8743b","#2ab38a"];
+var RHO=1.225,MU=1.81e-5,AS=340.3,cur=0,mode=0,run=true,part=true,ann=innerWidth>600,it=0,spdI=innerWidth>600?2:1,SP=[2,4,8,12],solid=new Uint8Array(N),bb={a:0,b:0,h:0},hov=null;
+var f=new Float32Array(9*N),g=new Float32Array(9*N),fi=new Float32Array(9),fp=new Float32Array(9);
+function feq(i,r,ux,uz){var cu=CX[i]*ux+CZ[i]*uz;return W[i]*r*(1+3*cu+4.5*cu*cu-1.5*(ux*ux+uz*uz));}
+function mask(key){solid.fill(0);var b=atob(M64[key]),w=152,h=44,a=1e9,e=0,t=0;
+ for(var z=0;z<h;z++)for(var x=0;x<w;x++){var k=z*w+x;if((b.charCodeAt(k>>3)>>(7-(k&7)))&1){solid[z*NX+100+x]=1;if(100+x<a)a=100+x;if(100+x>e)e=100+x;if(z>t)t=z;}}
+ bb={a:a,b:e,h:t};}
+function reset(){mask(CFG[cur].k);for(var c=0;c<N;c++)for(var i=0;i<9;i++)f[i*N+c]=feq(i,1,U,0);it=0;tags();}
+function step(){
+ for(var z=0;z<NZ;z++)for(var x=0;x<NX;x++){var c=z*NX+x,rho=0,ux=0,uz=0,i;
+  for(i=0;i<9;i++){var v=f[i*N+c];fi[i]=v;rho+=v;ux+=CX[i]*v;uz+=CZ[i]*v;}
+  ux/=rho;uz/=rho;var pxx=0,pzz=0,pxz=0;
+  for(i=0;i<9;i++){var fn=fi[i]-feq(i,rho,ux,uz);pxx+=CX[i]*CX[i]*fn;pzz+=CZ[i]*CZ[i]*fn;pxz+=CX[i]*CZ[i]*fn;fp[i]=fn;}
+  var q=Math.sqrt(pxx*pxx+pzz*pzz+2*pxz*pxz),tau=0.5*(TAU0+Math.sqrt(TAU0*TAU0+18*1.4142*CS2*q/rho));
+  for(i=0;i<9;i++){var o=solid[c]?fi[OP[i]]:fi[i]-fp[i]/tau;var nx=x+CX[i],nz=z+CZ[i];
+   if(nx>=0&&nx<NX&&nz>=0&&nz<NZ)g[i*N+nz*NX+nx]=o;}}
+ for(var z2=0;z2<NZ;z2++){for(var i2=0;i2<9;i2++){g[i2*N+z2*NX]=feq(i2,1,U,0);g[i2*N+z2*NX+NX-1]=g[i2*N+z2*NX+NX-2];}}
+ for(var x2=0;x2<NX;x2++)for(var i3=0;i3<9;i3++){g[i3*N+x2]=feq(i3,1,U,0);g[i3*N+(NZ-1)*NX+x2]=feq(i3,1,U,0);}
+ var t=f;f=g;g=t;it++;}
+/* cores */
+var ST=[[0,[48,18,59]],[.14,[70,98,215]],[.3,[54,170,249]],[.45,[26,228,182]],[.6,[164,252,60]],[.75,[250,187,57]],[.9,[228,70,10]],[1,[122,4,3]]];
+function cmap(t){t=Math.max(0,Math.min(1,t));for(var k=1;k<ST.length;k++)if(t<=ST[k][0]){var a=ST[k-1],b=ST[k],u=(t-a[0])/(b[0]-a[0]);return[a[1][0]+(b[1][0]-a[1][0])*u,a[1][1]+(b[1][1]-a[1][1])*u,a[1][2]+(b[1][2]-a[1][2])*u];}return ST[7][1];}
+function dv(t){t=Math.max(0,Math.min(1,t));var A=[33,102,172],M=[236,236,236],B=[178,24,43],s=t<.5?A:M,e=t<.5?M:B,u=t<.5?t*2:(t-.5)*2;return[s[0]+(e[0]-s[0])*u,s[1]+(e[1]-s[1])*u,s[2]+(e[2]-s[2])*u];}
+var LV=[],LD=[];for(var q=0;q<256;q++){LV.push(cmap(q/255));LD.push(dv(q/255));}
+var MODES=[["Ver: velocidade","lento → rápido","linear-gradient(90deg,#30123b,#4662d7,#36aaf9,#1ae4b6,#a4fc3c,#fabb39,#e4460a,#7a0403)"],["Ver: pressão","azul = sucção (baixa) · vermelho = pressão alta","linear-gradient(90deg,#2166ac,#ececec,#b2182b)"],["Ver: vórtices","vermelho/azul = giros opostos","linear-gradient(90deg,#2166ac,#ececec,#b2182b)"]];
+var off=document.createElement("canvas");off.width=NX;off.height=NZ;var octx=off.getContext("2d"),img=octx.createImageData(NX,NZ),cv=document.getElementById("c"),ctx=cv.getContext("2d"),ov=document.getElementById("ov"),oc=ov.getContext("2d");
+var ux=new Float32Array(N),uz=new Float32Array(N),rr=new Float32Array(N);
+function draw(){
+ for(var c=0;c<N;c++){var r=0,a=0,b=0;for(var i=0;i<9;i++){var v=f[i*N+c];r+=v;a+=CX[i]*v;b+=CZ[i]*v;}rr[c]=r;ux[c]=a/r;uz[c]=b/r;}
+ for(var z=0;z<NZ;z++)for(var x=0;x<NX;x++){var c2=z*NX+x,p=((NZ-1-z)*NX+x)*4,col;
+  if(solid[c2]){var e=(x>0&&!solid[c2-1])||(x<NX-1&&!solid[c2+1])||(z<NZ-1&&!solid[c2+NX])||(z>0&&!solid[c2-NX]);col=e?[150,160,175]:[34,38,46];}
+  else{var t,L=LV;
+   if(mode==0)t=Math.hypot(ux[c2],uz[c2])/U/1.7;
+   else if(mode==1){L=LD;t=0.5+((rr[c2]-1)/3/(0.5*U*U))/3;}
+   else{L=LD;var w=0;if(x>0&&x<NX-1&&z>0&&z<NZ-1)w=(uz[c2+1]-uz[c2-1])/2-(ux[c2+NX]-ux[c2-NX])/2;t=0.5+w/0.06;}
+   col=L[Math.max(0,Math.min(255,Math.round(t*255)))];}
+  img.data[p]=col[0];img.data[p+1]=col[1];img.data[p+2]=col[2];img.data[p+3]=255;}
+ octx.putImageData(img,0,0);ctx.imageSmoothingEnabled=true;ctx.drawImage(off,VX0,0,VW,NZ,0,0,cv.width,cv.height);
+ document.getElementById("st").textContent="passo "+it;}
+/* partículas */
+var NP=500,px=new Float32Array(NP),pz=new Float32Array(NP),pa=new Float32Array(NP);
+function spawn(i,r){px[i]=r?VX0+Math.random()*VW:VX0+Math.random()*2;pz[i]=1+Math.random()*(NZ-3);pa[i]=Math.random()*200;}
+for(var s=0;s<NP;s++)spawn(s,true);
+function sx(x){return(x-VX0)*3}function sz(z){return(NZ-1-z+.5)*3}
+function parts(){
+ oc.globalCompositeOperation="destination-out";oc.fillStyle="rgba(0,0,0,"+(part?.16:1)+")";oc.fillRect(0,0,900,321);
+ if(!part)return;oc.globalCompositeOperation="source-over";oc.strokeStyle="rgba(255,255,255,.75)";oc.lineWidth=1.3;oc.beginPath();
+ for(var i=0;i<NP;i++){var c=Math.round(pz[i])*NX+Math.round(px[i]),nx=px[i]+ux[c]*SP[spdI]*1.3,nz=pz[i]+uz[c]*SP[spdI]*1.3;
+  if(run){oc.moveTo(sx(px[i]),sz(pz[i]));oc.lineTo(sx(nx),sz(nz));px[i]=nx;pz[i]=nz;pa[i]++;}
+  var cc=Math.round(pz[i])*NX+Math.round(px[i]);
+  if(px[i]>VX0+VW-1||pz[i]<1||pz[i]>NZ-2||pa[i]>420||solid[cc])spawn(i,false);}
+ oc.stroke();}
+/* anotações */
+var TG=[];
+function tags(){var h=document.getElementById("tags");h.innerHTML="";TG=[];
+ [["Estagnação",bb.a,bb.h*.35,"r"],["Ar acelerado = sucção no teto",(bb.a+bb.b)/2,bb.h+10,"c"],["Descolamento",bb.b,bb.h*.85,"l"],["Esteira (arrasto de pressão)",bb.b+25,bb.h*.35,"l"]].forEach(function(t){
+  var d=document.createElement("div");d.className="tag";d.textContent=t[0];d.style.left=(sx(t[1])/9)+"%";d.style.top=(sz(t[2])/3.21)+"%";d.style.transform=t[3]=="r"?"translate(-104%,-50%)":t[3]=="c"?"translate(-50%,-50%)":"translate(6px,-50%)";h.appendChild(d);TG.push(d);});
+ h.style.display=ann?"":"none";}
+/* medidas da esteira */
+var M={L:0,H:0,cf:0,cr:0};
+function measure(){var s=4.5/(bb.b-bb.a+1),L=0,z,x;
+ for(z=2;z<=bb.h;z++){var n=0;for(x=bb.b+1;x<NX-2&&ux[z*NX+x]<0.3*U;x++)n++;if(n>L)L=n;}
+ var xs=Math.min(bb.b+15,NX-2),hh=0;for(z=1;z<NZ-2;z++)if(Math.hypot(ux[z*NX+xs],uz[z*NX+xs])<0.7*U)hh++;
+ var cf=0,cr=0,nf=0,nr=0;for(z=1;z<=bb.h;z++){var a=z*NX+bb.a-1,b=z*NX+bb.b+1;if(!solid[a]){cf+=rr[a];nf++;}if(!solid[b]){cr+=rr[b];nr++;}}
+ var K=3/(0.5*U*U);cf=nf?(cf/nf-1)*K/9:0;cr=nr?(cr/nr-1)*K/9:0;
+ function sm(o,n){return it<30?n:o*.85+n*.15;}
+ M.L=sm(M.L,L*s);M.H=sm(M.H,hh*s);M.cf=sm(M.cf,cf);M.cr=sm(M.cr,cr);
+ var h="";[["Comprimento da esteira",nf2(M.L,1)+" m","ar com velocidade < 30% da corrente"],["Altura da esteira",nf2(M.H,1)+" m","região a 15 células atrás do carro"],["Cp no nariz",nf2(M.cf,2),"estagnação (teórico ≈ 1)"],["Cp na traseira",nf2(M.cr,2),"sucção no descolamento"],["ΔCp frente–trás",nf2(M.cf-M.cr,2),"∝ arrasto de pressão"]].forEach(function(k){h+='<div class="k"><span>'+k[0]+'</span><b>'+k[1]+'</b><span>'+k[2]+'</span></div>';});
+ document.getElementById("m").innerHTML=h;}
+function nf2(x,d){return x.toLocaleString("pt-BR",{minimumFractionDigits:d,maximumFractionDigits:d});}
+/* sonda */
+var wrap=document.getElementById("wrap");
+function pm(e){var r=wrap.getBoundingClientRect(),x=Math.floor(VX0+(e.clientX-r.left)/r.width*VW),z=NZ-1-Math.floor((e.clientY-r.top)/r.height*NZ);hov=(x>0&&x<NX-1&&z>0&&z<NZ-1)?[x,z]:null;}
+wrap.addEventListener("pointermove",pm);wrap.addEventListener("pointerdown",pm);wrap.addEventListener("pointerleave",function(){hov=null;});
+function probe(){var el=document.getElementById("probe");if(!hov)return;var c=hov[1]*NX+hov[0];if(solid[c]){el.textContent="Dentro da carroceria.";return;}
+ var vr=+document.getElementById("v").value+(+document.getElementById("h").value),sp=Math.hypot(ux[c],uz[c])/U*vr,cp=(rr[c]-1)/3/(0.5*U*U),w=(uz[c+1]-uz[c-1])/2-(ux[c+NX]-ux[c-NX])/2;
+ el.textContent="Velocidade do ar (ref. carro): "+nf2(sp,0)+" km/h ("+nf2(sp/vr*100,0)+"% da corrente) · Cp "+nf2(cp,2)+" · vorticidade "+nf2(w*1000,1)+(ux[c]<0?" · refluxo (ar voltando)":"");}
+/* painéis */
+function calc(c,v,h){var u=v/3.6,ur=(v+h)/3.6,q=.5*RHO*ur*ur*(ur<0?-1:1),Fd=Math.abs(q)*c.cd*1.9,Fl=q*c.cl*1.9;return{u:u,q:q,Fd:Fd,Fl:Fl,P:Fd*u/1000,E:Fd*1e5/3.6e6};}
+function info(){var v=+document.getElementById("v").value,h=+document.getElementById("h").value,al=+document.getElementById("al").value,c=CFG[cur];var tp=+document.getElementById("tp").value,T=tp+273.15-0.0065*al,sf=function(t){return Math.pow(t,1.5)/(t+110.4)};RHO=101325*Math.pow(1-2.25577e-5*al,5.2559)/(287.05*T);MU=1.81e-5*sf(T)/sf(288.15);AS=340.3*Math.sqrt(T/288.15);var r=calc(c,v,h);
+ document.getElementById("vv").textContent=v;document.getElementById("alv").textContent=nf2(al,0)+" m · ρ "+nf2(RHO,3);document.getElementById("tpv").textContent=tp+" °C (nível do mar)";document.getElementById("hw").textContent=(h>0?"+":"")+h+" km/h";
+ var Fr=.012*(1400*9.81-r.Fl),ht="";[["Aero vs. rolamento",nf2(r.Fd/(r.Fd+Fr)*100,0)+"% aero","rolamento ≈ "+nf2(Fr,0)+" N (hipótese: 1400 kg, Crr 0,012)"],["Força de arrasto",nf2(r.Fd,0)+" N","F_D = q·C_D·A"],["Força vertical",(r.Fl>0?"+":"")+nf2(r.Fl,0)+" N",r.Fl>0?"sustentação (alivia o peso)":"downforce (≈ "+nf2(-r.Fl/9.81,0)+" kgf)"],["Potência vs. arrasto",nf2(r.P,1)+" kW","≈ "+nf2(r.P*1.36,0)+" cv · P = F_D·V"],["Energia por 100 km",nf2(r.E,1)+" kWh","só arrasto aerodinâmico"],["Pressão dinâmica",nf2(r.q,0)+" Pa","q = ½ρV² (vel. relativa)"],["Coeficientes","C_D "+nf2(c.cd,2)+" · C_L "+nf2(c.cl,2),"estimativa de partida"]].forEach(function(k){ht+='<div class="k"><span>'+k[0]+'</span><b>'+k[1]+'</b><span>'+k[2]+'</span></div>';});
+ document.getElementById("k").innerHTML=ht;
+ document.getElementById("dn").textContent=c.n+" – detalhes do carro";document.getElementById("dd").textContent=c.d;document.getElementById("du").textContent="Quando usar: "+c.u;
+ document.getElementById("dp").innerHTML=c.p.map(function(s){return"<li>"+s+"</li>"}).join("");document.getElementById("de").innerHTML=c.e.map(function(s){return"<li>"+s+"</li>"}).join("");
+ var t="<tr><th>Configuração</th><th>C_D</th><th>C_L</th><th>Arrasto (N)</th><th>Força vert. (N)</th><th>Potência (kW)</th><th>kWh/100 km</th><th>|C_L|/C_D</th><th>Δ arrasto</th></tr>",r0=calc(CFG[0],v,h);
+ CFG.forEach(function(k,i){var x=calc(k,v,h),d=(x.Fd/r0.Fd-1)*100;t+='<tr'+(i==cur?' class="cur"':'')+'><td>'+k.n+'</td><td>'+nf2(k.cd,2)+'</td><td>'+nf2(k.cl,2)+'</td><td>'+nf2(x.Fd,0)+'</td><td>'+nf2(x.Fl,0)+'</td><td>'+nf2(x.P,1)+'</td><td>'+nf2(x.E,1)+'</td><td>'+nf2(Math.abs(k.cl)/k.cd,2)+'</td><td>'+(i?(d>0?"+":"")+nf2(d,1)+"%":"–")+'</td></tr>';});
+ document.getElementById("tb").innerHTML=t;chart(v,h);extras(v,h,c,r);}
+function chart(v,h){var cs=getComputedStyle(document.documentElement),fg=cs.getPropertyValue("--mut"),bd=cs.getPropertyValue("--bd"),cx=document.getElementById("ch").getContext("2d"),W=900,H=280,L=50,B=30,T=14,R=14,mx=Math.ceil(calc({cd:.36,cl:0},160,h).P*1.05/8)*8;
+ cx.clearRect(0,0,W,H);cx.font="12px system-ui";cx.fillStyle=fg;cx.strokeStyle=bd;
+ function X(s){return L+(s-40)/120*(W-L-R)}function Y(p){return H-B-p/mx*(H-B-T)}
+ for(var s=40;s<=160;s+=20){cx.beginPath();cx.moveTo(X(s),T);cx.lineTo(X(s),H-B);cx.stroke();cx.fillText(s+" km/h",X(s)-18,H-10);}
+ for(var k=0;k<=4;k++){var p=mx*k/4;cx.beginPath();cx.moveTo(L,Y(p));cx.lineTo(W-R,Y(p));cx.stroke();cx.fillText(nf2(p,0)+" kW",4,Y(p)+4);}
+ CFG.forEach(function(c,i){cx.strokeStyle=COL[i];cx.lineWidth=i==cur?3.5:1.8;cx.beginPath();for(var s=40;s<=160;s+=5){var p=calc(c,s,h).P;s==40?cx.moveTo(X(s),Y(p)):cx.lineTo(X(s),Y(p));}cx.stroke();cx.fillStyle=COL[i];cx.fillRect(L+8+i*150,T+2,10,10);cx.fillStyle=fg;cx.fillText(c.n,L+22+i*150,T+11);});
+ cx.lineWidth=1;cx.strokeStyle=fg;cx.setLineDash([5,4]);cx.beginPath();cx.moveTo(X(v),T+18);cx.lineTo(X(v),H-B);cx.stroke();cx.setLineDash([]);}
+function extras(v,h,c,r){var u=v/3.6,ur=(v+h)/3.6,L=4.5,Re=RHO*u*L/MU,Ma=u/AS,dl=.37*L*Math.pow(Re,-.2)*100,Cf=.0576*Math.pow(Re,-.2);
+ var S=["Converter a velocidade: V = "+v+" ÷ 3,6 = "+nf2(u,2)+" m/s"+(h?" (ar relativo: "+nf2(ur,2)+" m/s)":""),
+ "Pressão dinâmica: q = ½ · "+nf2(RHO,3)+" · "+nf2(ur,2)+"² = "+nf2(r.q,1)+" Pa",
+ "Arrasto: F_D = "+nf2(r.q,1)+" · "+nf2(c.cd,2)+" · 1,90 = "+nf2(r.Fd,0)+" N (≈ "+nf2(r.Fd/9.81,0)+" kgf)",
+ "Força vertical: F_L = "+nf2(r.q,1)+" · "+nf2(c.cl,2)+" · 1,90 = "+(r.Fl>0?"+":"")+nf2(r.Fl,0)+" N ("+(r.Fl>0?"sustentação":"downforce")+")",
+ "Potência: P = "+nf2(r.Fd,0)+" · "+nf2(u,2)+" = "+nf2(r.P,1)+" kW (≈ "+nf2(r.P*1.36,1)+" cv)",
+ "Reynolds: Re = ρ·V·L/μ ≈ "+nf2(Re/1e6,2)+" × 10⁶ → camada limite "+(Re>5e5?"turbulenta na maior parte do carro (acima de 5 × 10⁵)":"laminar"),
+ "Mach: Ma = "+nf2(Ma,2)+" → "+(Ma<.3?"ar tratado como incompressível (< 0,3)":"compressibilidade relevante"),
+ "Camada limite no fim do carro: δ ≈ "+nf2(dl,1)+" cm e C_f ≈ "+nf2(Cf,4)];
+ document.getElementById("sp").innerHTML=S.map(function(s){return"<li>"+s+"</li>"}).join("");
+ var tv="<tr><th>V (km/h)</th><th>V (m/s)</th><th>q (Pa)</th><th>F_D (N)</th><th>F_L (N)</th><th>P (kW)</th><th>Re (×10⁶)</th></tr>";
+ [40,60,80,100,120,160].forEach(function(s){var x=calc(c,s,h);tv+='<tr'+(s==v?' class="cur"':'')+'><td>'+s+'</td><td>'+nf2(s/3.6,1)+'</td><td>'+nf2(x.q,0)+'</td><td>'+nf2(x.Fd,0)+'</td><td>'+nf2(x.Fl,0)+'</td><td>'+nf2(x.P,1)+'</td><td>'+nf2(RHO*s/3.6*4.5/MU/1e6,2)+'</td></tr>';});
+ document.getElementById("tv").innerHTML=tv;
+ [].forEach.call(document.getElementById("vp").querySelectorAll("button"),function(b){b.className=parseInt(b.textContent)==v?"on":"";});
+ var mv=+document.getElementById("mv").value,Rm=RHO*mv*.225/MU,Fm=.5*RHO*mv*mv*c.cd*1.9/400;document.getElementById("mvl").textContent=nf2(mv,1)+" m/s";
+ var mh="";[["Reynolds da maquete",nf2(Rm/1000,0)+" mil","L = 0,225 m"],["Carro real / maquete",nf2(Re/Rm,0)+"×","razão dos números de Reynolds"],["Arrasto na maquete",nf2(Fm*1000,0)+" mN","≈ "+nf2(Fm*101.97,1)+" gf (área 1,9/400 m²)"],["Pressão dinâmica",nf2(.5*RHO*mv*mv,1)+" Pa","experimento visual, não de força"]].forEach(function(k){mh+='<div class="k"><span>'+k[0]+'</span><b>'+k[1]+'</b><span>'+k[2]+'</span></div>';});
+ document.getElementById("mq").innerHTML=mh;}
+/* UI */
+var bx=document.getElementById("cfgs");
+CFG.forEach(function(c,i){var b=document.createElement("button");b.textContent=c.n;b.className=i==cur?"on":"";b.onclick=function(){cur=i;[].forEach.call(bx.children,function(x,j){x.className=j==i?"on":""});reset();info();};bx.appendChild(b);});
+document.getElementById("v").oninput=info;document.getElementById("h").oninput=info;document.getElementById("al").oninput=info;document.getElementById("tp").oninput=info;document.getElementById("mv").oninput=info;
+[40,60,80,100,120,160].forEach(function(s){var b=document.createElement("button");b.textContent=s+" km/h";b.onclick=function(){document.getElementById("v").value=s;info();};document.getElementById("vp").appendChild(b);});
+document.getElementById("play").onclick=function(){run=!run;this.textContent=run?"Pausar":"Continuar";this.className=run?"on":"";};
+document.getElementById("rst").onclick=reset;
+function setMode(){var m=MODES[mode];document.getElementById("mode").textContent=m[0];document.getElementById("leg").textContent=m[1];document.getElementById("bar").style.background=m[2];}
+document.getElementById("mode").onclick=function(){mode=(mode+1)%3;setMode();};
+document.getElementById("part").onclick=function(){part=!part;this.className=part?"on":"";};
+document.getElementById("ann").onclick=function(){ann=!ann;this.className=ann?"on":"";document.getElementById("tags").style.display=ann?"":"none";};
+document.getElementById("spd").onclick=function(){spdI=(spdI+1)%4;this.textContent="Sim: "+SP[spdI]+"×";};
+var fr=0;
+function loop(){if(run){for(var k=0;k<SP[spdI];k++)step();}draw();parts();probe();if(++fr%12==0)measure();requestAnimationFrame(loop);}
+setMode();document.getElementById("ann").className=ann?"on":"";document.getElementById("spd").textContent="Sim: "+SP[spdI]+"×";reset();info();loop();
+})();
+</script></body></html>
